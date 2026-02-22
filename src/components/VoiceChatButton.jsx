@@ -88,10 +88,23 @@ export default function VoiceChatButton({
 
   if (!supported) return null;
 
+  // Glow config per state
+  const glowShadow = {
+    [VOICE_STATES.IDLE]:       ['0 4px 18px rgba(0,0,0,0.18), 0 0 14px rgba(212,130,42,0.35)', '0 4px 18px rgba(0,0,0,0.18), 0 0 26px rgba(212,130,42,0.6)', '0 4px 18px rgba(0,0,0,0.18), 0 0 14px rgba(212,130,42,0.35)'],
+    [VOICE_STATES.LISTENING]:  ['0 4px 18px rgba(0,0,0,0.18), 0 0 22px rgba(212,130,42,0.7)', '0 4px 18px rgba(0,0,0,0.18), 0 0 40px rgba(212,130,42,1)', '0 4px 18px rgba(0,0,0,0.18), 0 0 22px rgba(212,130,42,0.7)'],
+    [VOICE_STATES.PROCESSING]: '0 4px 16px rgba(0,0,0,0.2)',
+    [VOICE_STATES.SPEAKING]:   ['0 4px 18px rgba(0,0,0,0.18), 0 0 14px rgba(100,160,120,0.5)', '0 4px 18px rgba(0,0,0,0.18), 0 0 28px rgba(100,160,120,0.8)', '0 4px 18px rgba(0,0,0,0.18), 0 0 14px rgba(100,160,120,0.5)'],
+    [VOICE_STATES.ERROR]:      '0 4px 16px rgba(0,0,0,0.2)',
+  }[state];
+
+  const glowTransition = (state === VOICE_STATES.IDLE || state === VOICE_STATES.LISTENING || state === VOICE_STATES.SPEAKING)
+    ? { duration: state === VOICE_STATES.LISTENING ? 0.8 : 2, repeat: Infinity, ease: 'easeInOut' }
+    : {};
+
   return (
     <div style={{
       position: 'fixed',
-      bottom: 32, right: 32,
+      top: 127, right: 24,
       zIndex: 150,
       display: 'flex',
       flexDirection: 'column',
@@ -100,13 +113,85 @@ export default function VoiceChatButton({
       pointerEvents: 'none',   // container doesn't block clicks
     }}>
 
+      {/* Mic button */}
+      <motion.button
+        onClick={handleClick}
+        disabled={!config.clickable}
+        title={config.title}
+        whileHover={config.clickable ? { scale: 1.08 } : {}}
+        whileTap={config.clickable ? { scale: 0.92 } : {}}
+        animate={{ boxShadow: glowShadow }}
+        transition={glowTransition}
+        style={{
+          width: 48, height: 48, borderRadius: '50%',
+          border: 'none',
+          background: state === VOICE_STATES.ERROR
+            ? 'var(--red)'
+            : state === VOICE_STATES.SPEAKING
+            ? 'var(--sage)'
+            : 'var(--ink)',
+          color: 'white', fontSize: 19,
+          cursor: config.clickable ? 'pointer' : 'default',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          position: 'relative',
+          transition: 'background 0.25s',
+          pointerEvents: 'all',
+        }}
+      >
+        {config.icon}
+
+        {/* Double pulse rings when listening */}
+        {state === VOICE_STATES.LISTENING && (
+          <>
+            <motion.span
+              animate={{ scale: [1, 1.7], opacity: [0.5, 0] }}
+              transition={{ duration: 1.1, repeat: Infinity, ease: 'easeOut' }}
+              style={{
+                position: 'absolute', inset: -4, borderRadius: '50%',
+                border: '2px solid var(--amber)', pointerEvents: 'none',
+              }}
+            />
+            <motion.span
+              animate={{ scale: [1, 2.1], opacity: [0.3, 0] }}
+              transition={{ duration: 1.1, repeat: Infinity, ease: 'easeOut', delay: 0.35 }}
+              style={{
+                position: 'absolute', inset: -4, borderRadius: '50%',
+                border: '2px solid var(--amber)', pointerEvents: 'none',
+              }}
+            />
+          </>
+        )}
+      </motion.button>
+
+      {/* Status pill */}
+      <AnimatePresence>
+        {state !== VOICE_STATES.IDLE && (
+          <motion.div
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            style={{
+              background: 'var(--ink)', color: 'white',
+              fontSize: 11, fontWeight: 500,
+              padding: '5px 12px', borderRadius: 20,
+              whiteSpace: 'nowrap', pointerEvents: 'none',
+            }}
+          >
+            {state === VOICE_STATES.LISTENING  && '● Listening...'}
+            {state === VOICE_STATES.PROCESSING && '⏳ Thinking...'}
+            {state === VOICE_STATES.SPEAKING   && '🔊 Speaking...'}
+            {state === VOICE_STATES.ERROR      && '⚠ Tap to retry'}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Transcript popover */}
       <AnimatePresence>
         {showTranscript && messages.length > 0 && (
           <motion.div
-            initial={{ opacity: 0, y: 8, scale: 0.96 }}
+            initial={{ opacity: 0, y: -8, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 8, scale: 0.96 }}
+            exit={{ opacity: 0, y: -8, scale: 0.96 }}
             transition={{ duration: 0.2 }}
             style={{
               width: 280, maxHeight: 300,
@@ -219,77 +304,6 @@ export default function VoiceChatButton({
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Status pill */}
-      <AnimatePresence>
-        {state !== VOICE_STATES.IDLE && (
-          <motion.div
-            initial={{ opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 4 }}
-            style={{
-              background: 'var(--ink)', color: 'white',
-              fontSize: 11, fontWeight: 500,
-              padding: '5px 12px', borderRadius: 20,
-              whiteSpace: 'nowrap', pointerEvents: 'none',
-            }}
-          >
-            {state === VOICE_STATES.LISTENING  && '● Listening...'}
-            {state === VOICE_STATES.PROCESSING && '⏳ Thinking...'}
-            {state === VOICE_STATES.SPEAKING   && '🔊 Speaking...'}
-            {state === VOICE_STATES.ERROR      && '⚠ Tap to retry'}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Mic button */}
-      <motion.button
-        onClick={handleClick}
-        disabled={!config.clickable}
-        title={config.title}
-        whileHover={config.clickable ? { scale: 1.08 } : {}}
-        whileTap={config.clickable ? { scale: 0.92 } : {}}
-        style={{
-          width: 52, height: 52, borderRadius: '50%',
-          border: 'none',
-          background: state === VOICE_STATES.ERROR
-            ? 'var(--red)'
-            : state === VOICE_STATES.SPEAKING
-            ? 'var(--sage)'
-            : 'var(--ink)',
-          color: 'white', fontSize: 20,
-          cursor: config.clickable ? 'pointer' : 'default',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          position: 'relative',
-          boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
-          transition: 'background 0.25s',
-          pointerEvents: 'all',
-        }}
-      >
-        {config.icon}
-
-        {/* Double pulse rings when listening */}
-        {state === VOICE_STATES.LISTENING && (
-          <>
-            <motion.span
-              animate={{ scale: [1, 1.7], opacity: [0.5, 0] }}
-              transition={{ duration: 1.1, repeat: Infinity, ease: 'easeOut' }}
-              style={{
-                position: 'absolute', inset: -4, borderRadius: '50%',
-                border: '2px solid var(--amber)', pointerEvents: 'none',
-              }}
-            />
-            <motion.span
-              animate={{ scale: [1, 2.1], opacity: [0.3, 0] }}
-              transition={{ duration: 1.1, repeat: Infinity, ease: 'easeOut', delay: 0.35 }}
-              style={{
-                position: 'absolute', inset: -4, borderRadius: '50%',
-                border: '2px solid var(--amber)', pointerEvents: 'none',
-              }}
-            />
-          </>
-        )}
-      </motion.button>
     </div>
   );
 }

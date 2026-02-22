@@ -528,6 +528,13 @@ export default function Reader({ book, onGoHome }) {
         history={chatHistory}
         onHistoryUpdate={setChatHistory}
       />
+
+      <VoiceChatButton
+        context={chatContext}
+        voice={book.voice || 'rachel'}
+        history={chatHistory}
+        onHistoryUpdate={setChatHistory}
+      />
     </div>
   );
 }
