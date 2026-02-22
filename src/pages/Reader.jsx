@@ -1,4 +1,5 @@
 // src/pages/Reader.jsx
+import VoiceChatButton from '../components/VoiceChatButton';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ThemeToggle from '../components/ThemeToggle';
@@ -9,27 +10,30 @@ import ChatPanel from '../components/ChatPanel';
 import SummaryCard from '../components/SummaryCard';
 
 export default function Reader({ book, onGoHome }) {
-  // ── Navigation state ────────────────────────────────────────────────────────
+  // ── Navigation ───────────────────────────────────────────────────────────────
   const [chapterIndex, setChapterIndex] = useState(0);
   const [chunkIndex, setChunkIndex]     = useState(0);
 
-  // ── UI state ─────────────────────────────────────────────────────────────────
+  // ── UI ────────────────────────────────────────────────────────────────────────
   const [showQuiz, setShowQuiz]         = useState(false);
   const [showSummary, setShowSummary]   = useState(false);
   const [showChat, setShowChat]         = useState(false);
   const [sidebarOpen, setSidebarOpen]   = useState(true);
   const [audioError, setAudioError]     = useState(null);
 
-  // ── Score tracking ───────────────────────────────────────────────────────────
+  // ── Word highlighting ────────────────────────────────────────────────────────
+  const [activeWordIndex, setActiveWordIndex] = useState(-1);
+
+  // ── Score ────────────────────────────────────────────────────────────────────
   const [totalCorrect, setTotalCorrect]     = useState(0);
   const [totalQuestions, setTotalQuestions] = useState(0);
 
-  // ── Chat state ───────────────────────────────────────────────────────────────
+  // ── Chat ─────────────────────────────────────────────────────────────────────
   const [chatHistory, setChatHistory] = useState([]);
 
   const contentRef = useRef(null);
 
-  // ── Derived data ─────────────────────────────────────────────────────────────
+  // ── Derived ──────────────────────────────────────────────────────────────────
   const chapters = book?.chapters || [];
   const chapter  = chapters[chapterIndex];
   const chunks   = chapter?.chunks || [];
@@ -64,8 +68,9 @@ export default function Reader({ book, onGoHome }) {
     textReadSoFar,
   }), [book, chunk, chapter, textReadSoFar]);
 
+  // Reset chat and word index when book or chunk changes
   useEffect(() => { setChatHistory([]); }, [book?.id]);
-
+  useEffect(() => { setActiveWordIndex(-1); }, [chapterIndex, chunkIndex]);
   useEffect(() => {
     contentRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
   }, [chunkIndex, chapterIndex]);
@@ -117,7 +122,7 @@ export default function Reader({ book, onGoHome }) {
     }
   }
 
-  // ── Audio / quiz callbacks ───────────────────────────────────────────────────
+  // ── Audio / quiz callbacks ────────────────────────────────────────────────────
   function handleChunkEnd() {
     if (chunk?.quizAfter) {
       setShowQuiz(true);
@@ -143,8 +148,8 @@ export default function Reader({ book, onGoHome }) {
     return (
       <div style={{
         minHeight: '100vh', background: 'var(--bg)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        flexDirection: 'column', gap: 16,
+        display: 'flex', alignItems: 'center',
+        justifyContent: 'center', flexDirection: 'column', gap: 16,
       }}>
         <p style={{ fontFamily: 'var(--font-serif)', fontSize: 22, color: 'var(--ink)' }}>
           No content to display
@@ -177,7 +182,11 @@ export default function Reader({ book, onGoHome }) {
             }}
           >
             {/* Book info */}
-            <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+            <div style={{
+              padding: '18px 20px',
+              borderBottom: '1px solid var(--border)',
+              flexShrink: 0,
+            }}>
               <button
                 onClick={onGoHome}
                 style={{
@@ -193,7 +202,8 @@ export default function Reader({ book, onGoHome }) {
               </button>
               <p style={{
                 fontFamily: 'var(--font-serif)',
-                fontSize: 15, color: 'var(--ink)', marginBottom: 2, lineHeight: 1.3,
+                fontSize: 15, color: 'var(--ink)',
+                marginBottom: 2, lineHeight: 1.3,
               }}>
                 {book.title}
               </p>
@@ -202,7 +212,7 @@ export default function Reader({ book, onGoHome }) {
               </p>
             </div>
 
-            {/* Score widget */}
+            {/* Comprehension score */}
             {comprehensionScore !== null && (
               <div style={{
                 margin: '12px 14px',
@@ -221,7 +231,10 @@ export default function Reader({ book, onGoHome }) {
                   key={comprehensionScore}
                   initial={{ scale: 1.15 }}
                   animate={{ scale: 1 }}
-                  style={{ fontFamily: 'var(--font-serif)', fontSize: 34, color: 'var(--ink)', lineHeight: 1 }}
+                  style={{
+                    fontFamily: 'var(--font-serif)',
+                    fontSize: 34, color: 'var(--ink)', lineHeight: 1,
+                  }}
                 >
                   {comprehensionScore}%
                 </motion.p>
@@ -240,7 +253,8 @@ export default function Reader({ book, onGoHome }) {
                     style={{
                       width: '100%', textAlign: 'left',
                       padding: '8px 18px',
-                      background: ci === chapterIndex ? 'rgba(212,130,42,0.07)' : 'transparent',
+                      background: ci === chapterIndex
+                        ? 'rgba(212,130,42,0.07)' : 'transparent',
                       border: 'none', cursor: 'pointer',
                       display: 'flex', alignItems: 'center', gap: 8,
                       transition: 'background 0.15s',
@@ -248,7 +262,11 @@ export default function Reader({ book, onGoHome }) {
                   >
                     <span style={{
                       width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
-                      background: ci < chapterIndex ? 'var(--sage)' : ci === chapterIndex ? 'var(--amber)' : 'var(--border)',
+                      background: ci < chapterIndex
+                        ? 'var(--sage)'
+                        : ci === chapterIndex
+                        ? 'var(--amber)'
+                        : 'var(--border)',
                       transition: 'background 0.2s',
                     }} />
                     <span style={{
@@ -261,6 +279,7 @@ export default function Reader({ book, onGoHome }) {
                     </span>
                   </button>
 
+                  {/* Chunks — only for active chapter */}
                   {ci === chapterIndex && (
                     <div style={{ paddingLeft: 24 }}>
                       {ch.chunks?.map((ck, ki) => (
@@ -270,8 +289,7 @@ export default function Reader({ book, onGoHome }) {
                           style={{
                             width: '100%', textAlign: 'left',
                             padding: '5px 16px 5px 10px',
-                            background: 'transparent',
-                            border: 'none', cursor: 'pointer',
+                            background: 'transparent', border: 'none', cursor: 'pointer',
                             borderLeft: `2px solid ${ki === chunkIndex ? 'var(--amber)' : 'transparent'}`,
                             transition: 'border-color 0.15s',
                           }}
@@ -291,7 +309,12 @@ export default function Reader({ book, onGoHome }) {
             </div>
 
             {/* Tool buttons */}
-            <div style={{ padding: '12px 14px', borderTop: '1px solid var(--border)', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{
+              padding: '12px 14px',
+              borderTop: '1px solid var(--border)',
+              flexShrink: 0,
+              display: 'flex', flexDirection: 'column', gap: 4,
+            }}>
               <SidebarToolBtn
                 icon="💬" label="Ask AI Assistant"
                 color="var(--amber)"
@@ -309,8 +332,11 @@ export default function Reader({ book, onGoHome }) {
         )}
       </AnimatePresence>
 
-      {/* ── Main area ───────────────────────────────────────────────────────── */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+      {/* ── Main reading area ────────────────────────────────────────────────── */}
+      <div style={{
+        flex: 1, display: 'flex',
+        flexDirection: 'column', overflow: 'hidden', minWidth: 0,
+      }}>
 
         {/* Top bar */}
         <div style={{
@@ -334,12 +360,20 @@ export default function Reader({ book, onGoHome }) {
           </button>
 
           {/* Breadcrumb */}
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--muted)', overflow: 'hidden' }}>
-            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <div style={{
+            flex: 1, display: 'flex', alignItems: 'center',
+            gap: 6, fontSize: 12, color: 'var(--muted)', overflow: 'hidden',
+          }}>
+            <span style={{
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            }}>
               {chapter?.chapterTitle}
             </span>
             <span style={{ opacity: 0.4 }}>›</span>
-            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: 'var(--ink)', fontWeight: 500 }}>
+            <span style={{
+              whiteSpace: 'nowrap', overflow: 'hidden',
+              textOverflow: 'ellipsis', color: 'var(--ink)', fontWeight: 500,
+            }}>
               {chunk?.title}
             </span>
           </div>
@@ -349,7 +383,11 @@ export default function Reader({ book, onGoHome }) {
           </span>
 
           <div style={{ display: 'flex', gap: 8, flexShrink: 0, alignItems: 'center' }}>
-            <OriginButton variant="ghost" size="sm" onClick={() => setShowChat(o => !o)} icon="💬">
+            <OriginButton
+              variant="ghost" size="sm"
+              onClick={() => setShowChat(o => !o)}
+              icon="💬"
+            >
               Chat
             </OriginButton>
             <ThemeToggle />
@@ -362,9 +400,10 @@ export default function Reader({ book, onGoHome }) {
           voice={book.voice || 'rachel'}
           onChunkEnd={handleChunkEnd}
           onError={setAudioError}
+          onWordChange={setActiveWordIndex}
         />
 
-        {/* Audio error */}
+        {/* Audio error banner */}
         <AnimatePresence>
           {audioError && (
             <motion.div
@@ -372,13 +411,21 @@ export default function Reader({ book, onGoHome }) {
               animate={{ height: 'auto', opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
               style={{
-                background: 'var(--red-pale)', borderBottom: '1px solid var(--red)',
-                padding: '8px 22px', display: 'flex',
-                justifyContent: 'space-between', alignItems: 'center', flexShrink: 0,
+                background: 'var(--red-pale)',
+                borderBottom: '1px solid var(--red)',
+                padding: '8px 22px',
+                display: 'flex', justifyContent: 'space-between',
+                alignItems: 'center', flexShrink: 0,
               }}
             >
               <span style={{ fontSize: 13, color: 'var(--red)' }}>⚠ {audioError}</span>
-              <button onClick={() => setAudioError(null)} style={{ background: 'none', border: 'none', color: 'var(--red)', cursor: 'pointer', fontSize: 12 }}>
+              <button
+                onClick={() => setAudioError(null)}
+                style={{
+                  background: 'none', border: 'none',
+                  color: 'var(--red)', cursor: 'pointer', fontSize: 12,
+                }}
+              >
                 Dismiss
               </button>
             </motion.div>
@@ -386,7 +433,10 @@ export default function Reader({ book, onGoHome }) {
         </AnimatePresence>
 
         {/* Reading content */}
-        <div ref={contentRef} style={{ flex: 1, overflowY: 'auto', padding: '48px 80px' }}>
+        <div
+          ref={contentRef}
+          style={{ flex: 1, overflowY: 'auto', padding: '48px 80px' }}
+        >
           <div style={{ maxWidth: 680, margin: '0 auto' }}>
             <AnimatePresence mode="wait">
               {chunk && (
@@ -397,6 +447,7 @@ export default function Reader({ book, onGoHome }) {
                   exit={{ opacity: 0, y: -16 }}
                   transition={{ duration: 0.28 }}
                 >
+                  {/* Chapter label */}
                   <p style={{
                     fontSize: 10, fontWeight: 600,
                     textTransform: 'uppercase', letterSpacing: '2.5px',
@@ -405,6 +456,7 @@ export default function Reader({ book, onGoHome }) {
                     {chapter?.chapterTitle}
                   </p>
 
+                  {/* Chunk title */}
                   <h1 style={{
                     fontFamily: 'var(--font-serif)',
                     fontSize: 'clamp(22px, 3vw, 34px)',
@@ -414,10 +466,12 @@ export default function Reader({ book, onGoHome }) {
                     {chunk.title}
                   </h1>
 
-                  <div style={{ fontSize: 17, lineHeight: 1.9, color: 'var(--ink-soft)' }}>
-                    {chunk.text.split('\n\n').map((p, i) => (
-                      <p key={i} style={{ marginBottom: '1.4em' }}>{p}</p>
-                    ))}
+                  {/* Body text with word highlighting */}
+                  <div style={{ fontSize: 17, lineHeight: 1.9 }}>
+                    <WordHighlighter
+                      text={chunk.text}
+                      activeWordIndex={activeWordIndex}
+                    />
                   </div>
 
                   {/* Bottom navigation */}
@@ -478,6 +532,54 @@ export default function Reader({ book, onGoHome }) {
   );
 }
 
+
+// ── Word-by-word highlighter ───────────────────────────────────────────────────
+// Splits text into tokens (words + whitespace), renders each word as a
+// motion.span that glows amber when the audio cursor reaches it
+function WordHighlighter({ text, activeWordIndex }) {
+  const tokens = text.split(/(\s+)/);
+  let wordCount = 0;
+
+  return (
+    <>
+      {text.split('\n\n').map((paragraph, pi) => (
+        <p key={pi} style={{ marginBottom: '1.4em' }}>
+          {paragraph.split(/(\s+)/).map((token, ti) => {
+            // Whitespace tokens pass through unstyled
+            if (/^\s+$/.test(token)) {
+              return <span key={ti}>{token}</span>;
+            }
+
+            const index    = wordCount++;
+            const isActive = index === activeWordIndex;
+
+            return (
+              <motion.span
+                key={ti}
+                animate={isActive
+                  ? { backgroundColor: 'rgba(212,130,42,0.25)', color: 'var(--ink)' }
+                  : { backgroundColor: 'rgba(0,0,0,0)', color: 'var(--ink-soft)' }
+                }
+                transition={{ duration: 0.08 }}
+                style={{
+                  borderRadius: 3,
+                  padding: '1px 2px',
+                  margin: '0 -2px',
+                  display: 'inline',
+                }}
+              >
+                {token}
+              </motion.span>
+            );
+          })}
+        </p>
+      ))}
+    </>
+  );
+}
+
+
+// ── Sidebar tool button ────────────────────────────────────────────────────────
 function SidebarToolBtn({ icon, label, color, onClick }) {
   return (
     <button

@@ -1,7 +1,6 @@
 // src/components/AudioPlayer.jsx
 import { useEffect, useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import OriginButton from './OriginButton';
+import { motion } from 'framer-motion';
 
 const SPEEDS = [0.75, 1, 1.25, 1.5, 2];
 
@@ -10,35 +9,35 @@ export default function AudioPlayer({
   voice,          // voice name e.g. 'rachel'
   onChunkEnd,     // called when audio finishes playing
   onError,        // called with error message string
+  onWordChange,   // called with index of currently spoken word (or -1 when done)
 }) {
-  const [isPlaying, setIsPlaying]   = useState(false);
-  const [isLoading, setIsLoading]   = useState(false);
-  const [progress, setProgress]     = useState(0);     // 0–100
-  const [duration, setDuration]     = useState(0);
+  const [isPlaying, setIsPlaying]     = useState(false);
+  const [isLoading, setIsLoading]     = useState(false);
+  const [progress, setProgress]       = useState(0);
+  const [duration, setDuration]       = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
-  const [speed, setSpeed]           = useState(1);
-  const [audioReady, setAudioReady] = useState(false);
+  const [speed, setSpeed]             = useState(1);
+  const [audioReady, setAudioReady]   = useState(false);
 
-  const audioRef    = useRef(null);
-  const audioUrlRef = useRef(null);  // blob URL — we revoke on cleanup
-  const chunkIdRef  = useRef(null);  // track which chunk the audio is for
-
-  const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+  const audioRef       = useRef(null);
+  const audioUrlRef    = useRef(null);
+  const wordTimingsRef = useRef([]);   // [{ word, start, end }]
+  const chunkIdRef     = useRef(null);
 
   // ── Fetch audio whenever chunk changes ──────────────────────────────────────
   useEffect(() => {
     if (!chunk?.text) return;
 
-    // Reset state
     setIsPlaying(false);
     setProgress(0);
     setCurrentTime(0);
     setDuration(0);
     setAudioReady(false);
     setIsLoading(true);
-    chunkIdRef.current = chunk.id;
+    chunkIdRef.current     = chunk.id;
+    wordTimingsRef.current = [];
+    onWordChange?.(-1);
 
-    // Cleanup previous audio
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current = null;
@@ -51,9 +50,18 @@ export default function AudioPlayer({
     fetchAudio(chunk);
   }, [chunk?.id]);
 
+  // ── Cleanup on unmount ───────────────────────────────────────────────────────
+  useEffect(() => {
+    return () => {
+      audioRef.current?.pause();
+      if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
+    };
+  }, []);
+
+  // ── Fetch audio + word timings from backend ──────────────────────────────────
   async function fetchAudio(chunk) {
     try {
-      const res = await fetch(`${BASE_URL}/api/audio`, {
+      const res = await fetch('/api/audio', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: chunk.text, voice }),
@@ -64,13 +72,16 @@ export default function AudioPlayer({
         throw new Error(err.error || 'Failed to load audio');
       }
 
-      // Make sure this response is still for the current chunk
-      // (user might have navigated away while fetching)
       if (chunkIdRef.current !== chunk.id) return;
 
-      const blob     = await res.blob();
-      const url      = URL.createObjectURL(blob);
-      audioUrlRef.current = url;
+      const data = await res.json();
+
+      // Decode base64 audio → blob URL
+      const audioBytes     = Uint8Array.from(atob(data.audioBase64), c => c.charCodeAt(0));
+      const blob           = new Blob([audioBytes], { type: 'audio/mpeg' });
+      const url            = URL.createObjectURL(blob);
+      audioUrlRef.current  = url;
+      wordTimingsRef.current = data.wordTimings || [];
 
       const audio = new Audio(url);
       audio.playbackRate = speed;
@@ -83,13 +94,22 @@ export default function AudioPlayer({
       });
 
       audio.addEventListener('timeupdate', () => {
-        setCurrentTime(audio.currentTime);
-        setProgress((audio.currentTime / audio.duration) * 100 || 0);
+        const t = audio.currentTime;
+        setCurrentTime(t);
+        setProgress((t / audio.duration) * 100 || 0);
+
+        // Find which word is being spoken right now and fire callback
+        const timings = wordTimingsRef.current;
+        if (timings.length > 0) {
+          const idx = timings.findIndex(w => t >= w.start && t <= w.end);
+          onWordChange?.(idx);
+        }
       });
 
       audio.addEventListener('ended', () => {
         setIsPlaying(false);
         setProgress(100);
+        onWordChange?.(-1);
         onChunkEnd?.();
       });
 
@@ -106,24 +126,10 @@ export default function AudioPlayer({
     }
   }
 
-  // ── Cleanup on unmount ───────────────────────────────────────────────────────
-  useEffect(() => {
-    return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current = null;
-      }
-      if (audioUrlRef.current) {
-        URL.revokeObjectURL(audioUrlRef.current);
-      }
-    };
-  }, []);
-
-  // ── Controls ─────────────────────────────────────────────────────────────────
+  // ── Controls ──────────────────────────────────────────────────────────────────
   function togglePlay() {
     const audio = audioRef.current;
     if (!audio || !audioReady) return;
-
     if (isPlaying) {
       audio.pause();
       setIsPlaying(false);
@@ -148,7 +154,7 @@ export default function AudioPlayer({
 
   function formatTime(s) {
     if (!s || isNaN(s)) return '0:00';
-    const m = Math.floor(s / 60);
+    const m   = Math.floor(s / 60);
     const sec = Math.floor(s % 60);
     return `${m}:${sec.toString().padStart(2, '0')}`;
   }
@@ -158,46 +164,38 @@ export default function AudioPlayer({
       padding: '14px 28px',
       borderBottom: '1px solid var(--border)',
       background: 'var(--bg)',
-      display: 'flex',
-      alignItems: 'center',
-      gap: 16,
+      display: 'flex', alignItems: 'center', gap: 16,
     }}>
 
-      {/* Play / Pause button */}
+      {/* Play / Pause */}
       <motion.button
         onClick={togglePlay}
         disabled={!audioReady}
         whileHover={audioReady ? { scale: 1.06 } : {}}
         whileTap={audioReady ? { scale: 0.94 } : {}}
         style={{
-          width: 42, height: 42,
-          borderRadius: '50%',
+          width: 42, height: 42, borderRadius: '50%',
           background: audioReady ? 'var(--amber)' : 'var(--border)',
-          border: 'none',
-          color: 'white',
-          fontSize: 15,
+          border: 'none', color: 'white', fontSize: 15,
           cursor: audioReady ? 'pointer' : 'not-allowed',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          flexShrink: 0,
-          transition: 'background 0.2s',
+          flexShrink: 0, transition: 'background 0.2s',
           boxShadow: audioReady ? '0 3px 12px rgba(212,130,42,0.3)' : 'none',
         }}
       >
-        {isLoading
-          ? <LoadingDots />
-          : isPlaying ? '⏸' : '▶'}
+        {isLoading ? <LoadingDots /> : isPlaying ? '⏸' : '▶'}
       </motion.button>
 
       {/* Timeline */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
-        {/* Scrubber bar */}
+        {/* Scrubber */}
         <div
           onClick={seek}
           style={{
             height: 4, borderRadius: 4,
             background: 'var(--border)',
             cursor: duration ? 'pointer' : 'default',
-            position: 'relative', overflow: 'visible',
+            position: 'relative',
           }}
         >
           <motion.div
@@ -205,25 +203,24 @@ export default function AudioPlayer({
             transition={{ duration: 0.1 }}
             style={{
               height: '100%', borderRadius: 4,
-              background: 'var(--amber)',
-              position: 'relative',
+              background: 'var(--amber)', position: 'relative',
+              pointerEvents: 'none',   // ← clicks pass through to parent
             }}
           >
-            {/* Thumb dot */}
             {audioReady && (
               <div style={{
                 position: 'absolute', right: -4, top: '50%',
                 transform: 'translateY(-50%)',
-                width: 10, height: 10,
-                borderRadius: '50%',
+                width: 10, height: 10, borderRadius: '50%',
                 background: 'var(--amber)',
                 boxShadow: '0 0 0 2px var(--bg)',
+                pointerEvents: 'none',  // ← clicks pass through
               }} />
             )}
           </motion.div>
         </div>
 
-        {/* Time labels + voice indicator */}
+        {/* Time + voice label */}
         <div style={{
           display: 'flex', justifyContent: 'space-between',
           fontSize: 11, color: 'var(--muted)',
@@ -244,15 +241,13 @@ export default function AudioPlayer({
             key={s}
             onClick={() => setPlaybackSpeed(s)}
             style={{
-              padding: '4px 8px',
-              borderRadius: 6,
+              padding: '4px 8px', borderRadius: 6,
               border: '1px solid',
               borderColor: speed === s ? 'var(--amber)' : 'var(--border)',
               background: speed === s ? 'var(--amber)' : 'transparent',
               color: speed === s ? 'white' : 'var(--muted)',
               fontSize: 11, fontWeight: 500,
-              cursor: 'pointer',
-              transition: 'all 0.15s',
+              cursor: 'pointer', transition: 'all 0.15s',
             }}
           >
             {s}×
@@ -263,7 +258,6 @@ export default function AudioPlayer({
   );
 }
 
-// Animated waveform bars
 function Waveform({ isPlaying }) {
   return (
     <span style={{ display: 'flex', gap: 2, alignItems: 'center', height: 12 }}>
@@ -274,15 +268,10 @@ function Waveform({ isPlaying }) {
             ? { scaleY: [0.4, 1, 0.4], opacity: [0.6, 1, 0.6] }
             : { scaleY: 0.4, opacity: 0.4 }
           }
-          transition={isPlaying
-            ? { duration: 0.7, repeat: Infinity, delay: i * 0.12 }
-            : {}
-          }
+          transition={isPlaying ? { duration: 0.7, repeat: Infinity, delay: i * 0.12 } : {}}
           style={{
-            display: 'block',
-            width: 2, height: 10,
-            borderRadius: 2,
-            background: 'var(--amber)',
+            display: 'block', width: 2, height: 10,
+            borderRadius: 2, background: 'var(--amber)',
             transformOrigin: 'center',
           }}
         />
@@ -291,7 +280,6 @@ function Waveform({ isPlaying }) {
   );
 }
 
-// Three bouncing dots for loading state
 function LoadingDots() {
   return (
     <span style={{ display: 'flex', gap: 3 }}>
@@ -300,10 +288,7 @@ function LoadingDots() {
           key={i}
           animate={{ opacity: [0.2, 1, 0.2], y: [0, -3, 0] }}
           transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.15 }}
-          style={{
-            display: 'block', width: 4, height: 4,
-            borderRadius: '50%', background: 'white',
-          }}
+          style={{ display: 'block', width: 4, height: 4, borderRadius: '50%', background: 'white' }}
         />
       ))}
     </span>
