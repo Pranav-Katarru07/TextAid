@@ -1,5 +1,5 @@
 // src/pages/Home.jsx
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import TypewriterHero from '../components/TypewriterHero';
 import ThemeToggle from '../components/ThemeToggle';
@@ -18,22 +18,14 @@ const cardVariants = {
   show:   { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 300, damping: 28 } },
 };
 
-// ── Sample books — replace with real data from your backend ───────────────────
-const SAMPLE_BOOKS = [
-  { id: 1, title: 'Atomic Habits',             author: 'James Clear',    progress: 35, score: 84, contentType: 'nonfiction' },
-  { id: 2, title: 'Dune',                      author: 'Frank Herbert',  progress: 18, score: 71, contentType: 'fiction'    },
-  { id: 3, title: 'The Psychology of Money',   author: 'Morgan Housel',  progress: 72, score: 91, contentType: 'nonfiction' },
-];
-
 const STATS = [
-  { value: '3',    label: 'Books Active'      },
   { value: '84%',  label: 'Avg. Score'        },
   { value: '12h',  label: 'Read This Month'   },
   { value: '47',   label: 'Quizzes Completed' },
 ];
 
-export default function Home({ onOpenBook }) {
-  const [books, setBooks]               = useState(SAMPLE_BOOKS);
+export default function Home({ onOpenBook, user, onLogout }) {
+  const [books, setBooks]               = useState([]);
   const [showUpload, setShowUpload]     = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -42,7 +34,35 @@ export default function Home({ onOpenBook }) {
   const [selectedFile, setSelectedFile] = useState(null);
   const [contentType, setContentType]   = useState('nonfiction');
   const [voice, setVoice]               = useState('rachel');
+  const [loadingBookId, setLoadingBookId] = useState(null);
   const fileInputRef                    = useRef(null);
+
+  // ── Load saved books from DB on mount ────────────────────────────────────────
+  useEffect(() => {
+    if (!user?.token) { console.warn('No token — skipping library fetch'); return; }
+    fetch('/api/documents', {
+      headers: { Authorization: `Bearer ${user.token}` },
+    })
+      .then(r => r.json())
+      .then(docs => {
+        console.log('Library fetch response:', docs);
+        if (!Array.isArray(docs)) { console.warn('Expected array, got:', docs); return; }
+        setBooks(docs.map(doc => ({
+          id:            doc._id,
+          dbId:          doc._id,
+          title:         doc.title || doc.filename.replace(/\.pdf$/i, ''),
+          author:        doc.author || '',
+          progress:      0,
+          score:         null,
+          contentType:   doc.contentType,
+          voice:         doc.voice,
+          totalChapters: doc.totalChapters,
+          totalChunks:   doc.totalChunks,
+          // chapters intentionally omitted — loaded on demand when Read is clicked
+        })));
+      })
+      .catch(err => console.error('Failed to load library:', err));
+  }, [user?.token]);
 
   // ── File handling ────────────────────────────────────────────────────────────
   function handleFileSelect(file) {
@@ -92,9 +112,12 @@ export default function Home({ onOpenBook }) {
         if (mi < messages.length) setUploadMessage(messages[mi]);
       }, 3000);
 
-      const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-      const res = await fetch(`${BASE_URL}/api/upload`, {
+      const headers = {};
+      if (user?.token) headers['Authorization'] = `Bearer ${user.token}`;
+
+      const res = await fetch('/api/upload', {
         method: 'POST',
+        headers,
         body: formData,
       });
 
@@ -109,20 +132,21 @@ export default function Home({ onOpenBook }) {
       const data = await res.json();
 
       setUploadProgress(100);
-      setUploadMessage('Done! Opening your book...');
+      setUploadMessage('Saved to your library!');
 
-      // Add the new book to the library
+      // Add the processed book to the library (chapters already in memory)
       const newBook = {
-        id: Date.now(),
-        title: selectedFile.name.replace('.pdf', ''),
-        author: '',
-        progress: 0,
-        score: null,
+        id:            data.savedDocumentId || Date.now(),
+        dbId:          data.savedDocumentId || null,
+        title:         selectedFile.name.replace(/\.pdf$/i, ''),
+        author:        '',
+        progress:      0,
+        score:         null,
         contentType,
         voice,
-        chapters: data.chapters,
+        chapters:      data.chapters,
         totalChapters: data.totalChapters,
-        totalChunks: data.totalChunks,
+        totalChunks:   data.totalChunks,
       };
 
       setBooks(prev => [newBook, ...prev]);
@@ -132,7 +156,7 @@ export default function Home({ onOpenBook }) {
         setSelectedFile(null);
         setUploadProgress(0);
         setUploadMessage(null);
-        onOpenBook?.(newBook);
+        // No auto-open — user clicks Read when they're ready
       }, 800);
 
     } catch (error) {
@@ -141,6 +165,43 @@ export default function Home({ onOpenBook }) {
       setUploadProgress(0);
       setUploadMessage(null);
       alert(`Upload failed: ${error.message}`);
+    }
+  }
+
+  // ── Open a book — fetch chapters from DB if not already in memory ────────────
+  async function handleReadBook(book) {
+    if (book.chapters?.length > 0) {
+      onOpenBook?.(book);
+      return;
+    }
+    if (!book.dbId) return;
+    setLoadingBookId(book.id);
+    try {
+      const res = await fetch(`/api/documents/${book.dbId}`, {
+        headers: { Authorization: `Bearer ${user.token}` },
+      });
+      const full = await res.json();
+      const hydrated = { ...book, chapters: full.chapters };
+      setBooks(prev => prev.map(b => b.id === book.id ? hydrated : b));
+      onOpenBook?.(hydrated);
+    } catch {
+      alert('Failed to load book. Please try again.');
+    } finally {
+      setLoadingBookId(null);
+    }
+  }
+
+  // ── Delete a book ─────────────────────────────────────────────────────────────
+  async function handleDeleteBook(book) {
+    if (!book.dbId) { setBooks(prev => prev.filter(b => b.id !== book.id)); return; }
+    try {
+      await fetch(`/api/documents/${book.dbId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${user.token}` },
+      });
+      setBooks(prev => prev.filter(b => b.id !== book.id));
+    } catch {
+      alert('Failed to delete book.');
     }
   }
 
@@ -207,6 +268,11 @@ export default function Home({ onOpenBook }) {
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <ThemeToggle />
+            {user && (
+              <span style={{ fontSize: 13, color: 'var(--muted)' }}>
+                {user.email}
+              </span>
+            )}
             <OriginButton
               variant="amber"
               icon="+"
@@ -214,6 +280,11 @@ export default function Home({ onOpenBook }) {
             >
               New Reading
             </OriginButton>
+            {onLogout && (
+              <OriginButton variant="ghost" size="sm" onClick={onLogout}>
+                Log out
+              </OriginButton>
+            )}
           </div>
         </motion.header>
 
@@ -258,6 +329,7 @@ export default function Home({ onOpenBook }) {
 
           {/* Books grid */}
           <motion.div
+            key={books.length === 0 ? 'empty' : 'loaded'}
             variants={containerVariants}
             initial="hidden"
             animate="show"
@@ -272,7 +344,9 @@ export default function Home({ onOpenBook }) {
                 <BookCard
                   book={book}
                   index={i}
-                  onClick={onOpenBook}
+                  onRead={handleReadBook}
+                  onDelete={handleDeleteBook}
+                  loading={loadingBookId === book.id}
                 />
               </motion.div>
             ))}
@@ -413,7 +487,7 @@ function UploadModal({
             onClick={onUpload}
             disabled={!selectedFile}
           >
-            Start Reading
+            Save to Library
           </OriginButton>
         </div>
       </motion.div>

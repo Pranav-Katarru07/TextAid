@@ -3,6 +3,13 @@ const router = express.Router();
 const multer = require('multer');
 const pdfParse = require('pdf-parse');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const jwt = require('jsonwebtoken');
+const path = require('path');
+const fs = require('fs');
+const Document = require('../models/Document');
+
+const UPLOADS_DIR = path.join(__dirname, '..', 'uploads');
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
 const upload = multer({ storage: multer.memoryStorage() });
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -411,14 +418,47 @@ router.post('/', upload.single('file'), async (req, res) => {
 
     console.log(`\n✅ All done — ${chapters.length} chapters, ${totalChunks} total chunks`);
 
-    // ── Step 5: Send everything back ───────────────────────────────────────
+    // ── Step 5: Save to MongoDB + write PDF to disk if user is logged in ────
+    let savedDocumentId = null;
+    const authHeader = req.headers['authorization'];
+    if (authHeader) {
+      try {
+        const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+        // Write PDF buffer to disk
+        const safeName = req.file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+        const pdfFilename = `${Date.now()}-${safeName}`;
+        const pdfPath = path.join(UPLOADS_DIR, pdfFilename);
+        fs.writeFileSync(pdfPath, req.file.buffer);
+        console.log(`  📁 PDF saved: ${pdfFilename}`);
+
+        const doc = await Document.create({
+          userId:        decoded.id,
+          filename:      req.file.originalname,
+          contentType,
+          totalChapters: chapters.length,
+          totalChunks,
+          chapters,
+          pdfPath,
+        });
+        savedDocumentId = doc._id;
+        console.log(`  💾 Saved to library (doc ${savedDocumentId})`);
+      } catch {
+        // Invalid/expired token — just skip saving, don't fail the request
+        console.warn('  ⚠️  Auth token invalid — skipping DB save');
+      }
+    }
+
+    // ── Step 6: Send everything back ────────────────────────────────────────
     res.json({
       success: true,
       contentType,
       totalChapters: chapters.length,
       totalChunks,
       chapters,
-      ...(warnings.length > 0 && { warnings })  // only include warnings if there are any
+      ...(savedDocumentId && { savedDocumentId }),
+      ...(warnings.length > 0 && { warnings })
     });
 
   } catch (error) {

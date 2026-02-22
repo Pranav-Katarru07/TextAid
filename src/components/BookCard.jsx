@@ -13,35 +13,35 @@ const SPINE_PALETTES = [
   { from: '#6b1a3a', to: '#c0395a' },
 ];
 
-export default function BookCard({ book, index = 0, onClick }) {
-  const palette = SPINE_PALETTES[index % SPINE_PALETTES.length];
+export default function BookCard({ book, index = 0, onRead, onDelete, loading }) {
+  const palette  = SPINE_PALETTES[index % SPINE_PALETTES.length];
   const progress = book.progress || 0;
   const score    = book.score    || null;
 
   return (
     <motion.div
-      onClick={() => onClick?.(book)}
-      whileHover={{ y: -6, boxShadow: '0 16px 40px rgba(0,0,0,0.14)' }}
-      whileTap={{ scale: 0.98 }}
+      whileHover={{ y: -4, boxShadow: '0 16px 40px rgba(0,0,0,0.12)' }}
       transition={{ type: 'spring', stiffness: 400, damping: 28 }}
       style={{
         background: 'var(--white)',
         border: '1px solid var(--border)',
         borderRadius: 16,
         overflow: 'hidden',
-        cursor: 'pointer',
         position: 'relative',
         boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+        display: 'flex',
+        flexDirection: 'column',
       }}
     >
-      {/* Book spine / cover */}
+      {/* Book cover */}
       <div style={{
-        height: 160,
+        height: 148,
         background: `linear-gradient(135deg, ${palette.from}, ${palette.to})`,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: '20px 16px',
         position: 'relative',
         overflow: 'hidden',
+        flexShrink: 0,
       }}>
         {/* Subtle texture lines */}
         <div style={{
@@ -58,19 +58,17 @@ export default function BookCard({ book, index = 0, onClick }) {
           {book.title}
         </span>
 
-        {/* Reading badge */}
+        {/* Status badge */}
         {progress > 0 && progress < 100 && (
           <div style={{
             position: 'absolute', top: 10, right: 10,
-            background: 'rgba(0,0,0,0.35)',
-            backdropFilter: 'blur(4px)',
+            background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)',
             color: 'white', fontSize: 10, fontWeight: 600,
             padding: '3px 8px', borderRadius: 20,
           }}>
             📖 Reading
           </div>
         )}
-
         {progress === 100 && (
           <div style={{
             position: 'absolute', top: 10, right: 10,
@@ -81,10 +79,31 @@ export default function BookCard({ book, index = 0, onClick }) {
             ✓ Done
           </div>
         )}
+
+        {/* Delete button */}
+        {onDelete && (
+          <button
+            onClick={e => { e.stopPropagation(); onDelete(book); }}
+            title="Remove from library"
+            style={{
+              position: 'absolute', top: 8, left: 8,
+              background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)',
+              border: 'none', color: 'rgba(255,255,255,0.75)',
+              width: 24, height: 24, borderRadius: '50%',
+              cursor: 'pointer', fontSize: 12,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              transition: 'background 0.15s',
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = 'rgba(192,57,43,0.7)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'rgba(0,0,0,0.35)'}
+          >
+            ✕
+          </button>
+        )}
       </div>
 
       {/* Book info */}
-      <div style={{ padding: '14px 16px' }}>
+      <div style={{ padding: '14px 16px', flex: 1, display: 'flex', flexDirection: 'column' }}>
         <div style={{
           fontWeight: 500, fontSize: 14,
           color: 'var(--ink)', marginBottom: 3,
@@ -111,19 +130,41 @@ export default function BookCard({ book, index = 0, onClick }) {
 
         <div style={{
           display: 'flex', justifyContent: 'space-between',
-          alignItems: 'center',
+          alignItems: 'center', marginBottom: 14,
         }}>
           <span style={{ fontSize: 11, color: 'var(--muted)' }}>
             {progress}% complete
           </span>
           {score !== null && (
-            <span style={{
-              fontSize: 11, color: 'var(--sage)', fontWeight: 600,
-            }}>
+            <span style={{ fontSize: 11, color: 'var(--sage)', fontWeight: 600 }}>
               {score}% score
             </span>
           )}
         </div>
+
+        {/* Read button */}
+        <motion.button
+          onClick={() => onRead?.(book)}
+          disabled={loading}
+          whileHover={!loading ? { scale: 1.02 } : {}}
+          whileTap={!loading ? { scale: 0.97 } : {}}
+          style={{
+            width: '100%',
+            padding: '9px 0',
+            borderRadius: 9,
+            border: 'none',
+            background: loading ? 'var(--border)' : 'var(--amber)',
+            color: 'white',
+            fontSize: 13, fontWeight: 600,
+            fontFamily: 'var(--font-sans)',
+            cursor: loading ? 'not-allowed' : 'pointer',
+            boxShadow: loading ? 'none' : '0 2px 10px rgba(212,130,42,0.3)',
+            transition: 'background 0.2s',
+            marginTop: 'auto',
+          }}
+        >
+          {loading ? 'Loading...' : 'Read →'}
+        </motion.button>
       </div>
     </motion.div>
   );

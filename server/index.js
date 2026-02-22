@@ -1,6 +1,9 @@
-const express = require('express');
-const cors = require('cors');
+const express    = require('express');
+const cors       = require('cors');
 require('dotenv').config();
+
+const connectDB = require('./db');
+connectDB();
 
 const app = express();
 
@@ -21,13 +24,12 @@ app.get('/', (req, res) => {
 
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
-app.use('/api/upload',  require('./routes/upload'));
-app.use('/api/quiz',    require('./routes/quiz'));
-app.use('/api/audio',   require('./routes/audio'));
-app.use('/api/chat',    require('./routes/chat'));
-
-// These will be added in later steps:
-// app.use('/api/summary', require('./routes/summary'));
+app.use('/api/auth',      require('./routes/auth'));
+app.use('/api/documents', require('./routes/documents'));
+app.use('/api/upload',    require('./routes/upload'));
+app.use('/api/quiz',      require('./routes/quiz'));
+app.use('/api/audio',     require('./routes/audio'));
+app.use('/api/chat',      require('./routes/chat'));
 
 
 // ─── 404 Handler (unknown routes) ────────────────────────────────────────────
