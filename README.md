@@ -30,7 +30,7 @@ TextAID is an AI-powered learning companion that transforms any PDF — textbook
 - Node.js (v16+)
 - npm
 - An [ElevenLabs API key](https://elevenlabs.io)
-- An AI API key (OpenAI / Anthropic / etc.)
+- A [Gemini API key](https://ai.google.dev/gemini-api/docs)
 
 ### Installation
 
