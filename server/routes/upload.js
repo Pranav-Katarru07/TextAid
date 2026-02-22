@@ -39,7 +39,7 @@ async function generateChunkTitle(model, text, fallbackTitle) {
     Maximum 6 words. Write it like a chapter title, not a sentence.
     Return ONLY the title, nothing else.
     
-    PASSAGE: ${text.slice(0, 1000)}`;
+    PASSAGE: ${text.slice(0, 900)}`;
 
     const result = await model.generateContent(prompt);
     const title = result.response.text().trim();
@@ -206,7 +206,7 @@ async function processIntoChapters(cleanedText) {
 
       let chapterChunks = [];
 
-      if (chapterWordCount < 1000) {
+      if (chapterWordCount < 900) {
         // ── Short chapter: keep as one single chunk, no splitting ─────────────
         console.log(`    ⚡ Short chapter — keeping as single chunk`);
 

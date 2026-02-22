@@ -1,35 +1,56 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+// src/App.jsx
+import { useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import LogoPreloader from './components/LogoPreloader';
+import Home from './pages/Home';
+import Reader from './pages/Reader';
 
-function App() {
-  const [count, setCount] = useState(0)
+export default function App() {
+  const [preloadDone, setPreloadDone]   = useState(false);
+  const [currentPage, setCurrentPage]   = useState('home');
+  const [selectedBook, setSelectedBook] = useState(null);
+
+  function openBook(book) {
+    setSelectedBook(book);
+    setCurrentPage('reader');
+  }
+
+  function goHome() {
+    setCurrentPage('home');
+    setSelectedBook(null);
+  }
 
   return (
     <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.jsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
-}
+      {/* Logo preloader — shown once on first load */}
+      {!preloadDone && (
+        <LogoPreloader duration={2} onComplete={() => setPreloadDone(true)} />
+      )}
 
-export default App
+      {/* Pages with animated transitions */}
+      <AnimatePresence mode="wait">
+        {currentPage === 'home' ? (
+          <motion.div
+            key="home"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -16 }}
+            transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
+          >
+            <Home onOpenBook={openBook} />
+          </motion.div>
+        ) : (
+          <motion.div
+            key="reader"
+            initial={{ opacity: 0, x: 40 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -40 }}
+            transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
+          >
+            <Reader book={selectedBook} onGoHome={goHome} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
+  );
+}
